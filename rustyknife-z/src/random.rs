@@ -1,4 +1,6 @@
-use rand::{rngs::StdRng, FromEntropy, Rng, SeedableRng};
+use rand::{rngs::StdRng, Rng};
+use rand_pcg::rand_core::RngCore;
+use rand_pcg::rand_core::SeedableRng;
 use std::ops::Range;
 
 // Pcg32 = Lcg64Xsh32 has "16 bytes of state and 128-bit seeds", and is "considered value-stable
@@ -14,21 +16,35 @@ pub struct Random {
 impl Random {
     pub fn new() -> Self {
         Random {
-            rng: RngImpl::from_entropy(),
+            rng: RngImpl::from_os_rng(),
             implicit: true,
         }
     }
 
-    pub fn from_rng(rng: &mut StdRng) -> Result<Self, std::io::Error> {
-        let rng = RngImpl::from_rng(rng)?;
-        Ok(Random {
+    pub fn from_rng(rng: &mut StdRng) -> Self {
+        let seed = rng.gen::<[u8; 16]>();
+        let rng = RngImpl::from_seed(seed);
+        Random {
             rng,
             implicit: false,
-        })
+        }
     }
 
     pub fn get(&mut self, range: Range<u16>) -> u16 {
-        self.rng.gen_range(range.start, range.end)
+        // Sample uniformly in [start, end) (end exclusive) without modulo bias.
+        let start = range.start as u32;
+        let end = range.end as u32;
+        let width = end.saturating_sub(start);
+        if width == 0 {
+            return range.start; // degenerate range
+        }
+        let zone = u32::MAX - (u32::MAX % width);
+        loop {
+            let x = self.rng.next_u32();
+            if x < zone {
+                return (start + (x % width)) as u16;
+            }
+        }
     }
 
     pub fn seed(&mut self, seed: u16) {
@@ -37,7 +53,7 @@ impl Random {
 
     pub fn seed_unpredictably(&mut self) {
         if self.implicit {
-            self.rng = RngImpl::from_entropy();
+            self.rng = RngImpl::from_os_rng();
         }
     }
 }

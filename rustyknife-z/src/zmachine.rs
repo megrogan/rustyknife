@@ -74,7 +74,7 @@ impl ZMachine {
         let mem = Memory::wrap(bytes.clone())?;
 
         let random = if let Some(rng) = rng {
-            Random::from_rng(rng).map_err(FormatError::Io)?
+            Random::from_rng(rng)
         } else {
             Random::new()
         };
