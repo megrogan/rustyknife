@@ -20,7 +20,12 @@ impl Header {
         }
 
         // Version number (1 to 6)
-        let version = Version::try_from(bytes.borrow().get_u8(Address::from_byte_address(0x0000)).unwrap())?;
+        let version = Version::try_from(
+            bytes
+                .borrow()
+                .get_u8(Address::from_byte_address(0x0000))
+                .unwrap(),
+        )?;
 
         // 1.1.4
         // The maximum permitted length of a story file depends on the Version, as follows:
@@ -34,8 +39,8 @@ impl Header {
         }
 
         let mut header = Header {
-            version: version,
-            bytes: bytes,
+            version,
+            bytes,
             actual_checksum: 0,
         };
         header.actual_checksum = header.compute_checksum()?;
@@ -46,7 +51,10 @@ impl Header {
         let high_memory_base = header.high_memory_base();
         let static_memory_base = header.static_memory_base();
         if high_memory_base < static_memory_base {
-            return Err(FormatError::MemoryOverlap(static_memory_base, high_memory_base));
+            return Err(FormatError::MemoryOverlap(
+                static_memory_base,
+                high_memory_base,
+            ));
         }
 
         Ok(header)
@@ -57,55 +65,101 @@ impl Header {
     }
 
     pub fn flag(&self, flag: Flag) -> bool {
-        self.bytes.borrow().get_u8(flag.addr()).unwrap().bit(flag.bit())
+        self.bytes
+            .borrow()
+            .get_u8(flag.addr())
+            .unwrap()
+            .bit(flag.bit())
     }
 
     pub fn set_flag(&mut self, flag: Flag, val: bool) {
         let addr = flag.addr();
         let byte = self.bytes.borrow().get_u8(addr).unwrap();
-        self.bytes.borrow_mut().set_u8(addr, byte.set_bit(flag.bit(), val)).unwrap();
+        self.bytes
+            .borrow_mut()
+            .set_u8(addr, byte.set_bit(flag.bit(), val))
+            .unwrap();
     }
 
     pub fn static_memory_base(&self) -> Address {
         // Base of static memory (byte address)
-        Address::from_byte_address(self.bytes.borrow().get_u16(Address::from_byte_address(0x000e)).unwrap())
+        Address::from_byte_address(
+            self.bytes
+                .borrow()
+                .get_u16(Address::from_byte_address(0x000e))
+                .unwrap(),
+        )
     }
 
     pub fn high_memory_base(&self) -> Address {
         // Base of high memory (byte address)
-        Address::from_byte_address(self.bytes.borrow().get_u16(Address::from_byte_address(0x0004)).unwrap())
+        Address::from_byte_address(
+            self.bytes
+                .borrow()
+                .get_u16(Address::from_byte_address(0x0004))
+                .unwrap(),
+        )
     }
 
     pub fn initial_program_counter(&self) -> Address {
         // v1-5: Initial value of program counter (byte address)
         match self.version() {
-            V1 | V2 | V3 => Address::from_byte_address(self.bytes.borrow().get_u16(Address::from_byte_address(0x0006)).unwrap()),
+            V1 | V2 | V3 => Address::from_byte_address(
+                self.bytes
+                    .borrow()
+                    .get_u16(Address::from_byte_address(0x0006))
+                    .unwrap(),
+            ),
         }
     }
 
     pub fn globals_table_addr(&self) -> Address {
         // Location of global variables table (byte address)
-        Address::from_byte_address(self.bytes.borrow().get_u16(Address::from_byte_address(0x000c)).unwrap())
+        Address::from_byte_address(
+            self.bytes
+                .borrow()
+                .get_u16(Address::from_byte_address(0x000c))
+                .unwrap(),
+        )
     }
 
     pub fn abbrs_table_addr(&self) -> Address {
         // Location of abbreviations table (byte address)
-        Address::from_byte_address(self.bytes.borrow().get_u16(Address::from_byte_address(0x0018)).unwrap())
+        Address::from_byte_address(
+            self.bytes
+                .borrow()
+                .get_u16(Address::from_byte_address(0x0018))
+                .unwrap(),
+        )
     }
 
     pub fn obj_table_addr(&self) -> Address {
         // Location of object table (byte address)
-        Address::from_byte_address(self.bytes.borrow().get_u16(Address::from_byte_address(0x000a)).unwrap())
+        Address::from_byte_address(
+            self.bytes
+                .borrow()
+                .get_u16(Address::from_byte_address(0x000a))
+                .unwrap(),
+        )
     }
 
     pub fn dict_table_addr(&self) -> Address {
         // Location of dictionary (byte address)
-        Address::from_byte_address(self.bytes.borrow().get_u16(Address::from_byte_address(0x0008)).unwrap())
+        Address::from_byte_address(
+            self.bytes
+                .borrow()
+                .get_u16(Address::from_byte_address(0x0008))
+                .unwrap(),
+        )
     }
 
     fn file_length(&self) -> Result<usize, FormatError> {
         // Length of file
-        let size = self.bytes.borrow().get_u16(Address::from_byte_address(0x001a)).unwrap() as usize;
+        let size = self
+            .bytes
+            .borrow()
+            .get_u16(Address::from_byte_address(0x001a))
+            .unwrap() as usize;
         let num_bytes = self.bytes.borrow().len();
         // Some early Version 3 files do not contain length and checksum data, hence the notation 3+.
         if size == 0 {
@@ -116,7 +170,7 @@ impl Header {
             // Version, to make it fit into a header word. This constant is 2 for Versions 1 to 3,
             // 4 for Versions 4 to 5 or 8 for Versions 6 and later.
             let factor = match self.version() {
-                V1 | V2 | V3 => 2
+                V1 | V2 | V3 => 2,
             };
             let file_length = factor * size;
             // It is legal to have more bytes than file_length indicates, but not less.
@@ -130,9 +184,17 @@ impl Header {
 
     pub fn stored_checksum(&self) -> Option<u16> {
         // Checksum of file
-        let checksum = self.bytes.borrow().get_u16(Address::from_byte_address(0x001c)).unwrap();
+        let checksum = self
+            .bytes
+            .borrow()
+            .get_u16(Address::from_byte_address(0x001c))
+            .unwrap();
         // Some early Version 3 files do not contain length and checksum data, hence the notation 3+.
-        if checksum == 0 { None } else { Some(checksum) }
+        if checksum == 0 {
+            None
+        } else {
+            Some(checksum)
+        }
     }
 
     pub fn actual_checksum(&self) -> u16 {
@@ -172,21 +234,41 @@ impl Header {
         //    2   Apple IIe        6   IBM PC            10   Apple IIgs
         //    3   Macintosh        7   Commodore 128     11   Tandy Color
         //    4   Amiga            8   Commodore 64
-        bytes.set_u8(Address::from_byte_address(0x001e), int_meta.interpreter_number).unwrap();
+        bytes
+            .set_u8(
+                Address::from_byte_address(0x001e),
+                int_meta.interpreter_number,
+            )
+            .unwrap();
 
         // Interpreter version
         // 11.1.3.1
         // Interpreter versions are conventionally ASCII codes for upper-case letters in Versions 4
         // and 5 (note that Infocom's Version 6 interpreters just store numbers here).
-        bytes.set_u8(Address::from_byte_address(0x001f), int_meta.interpreter_version).unwrap();
+        bytes
+            .set_u8(
+                Address::from_byte_address(0x001f),
+                int_meta.interpreter_version,
+            )
+            .unwrap();
 
         // Standard revision number
         // 11.1.5
         // If an interpreter obeys Revision n.m of this document perfectly, as far as anyone knows,
         // then byte $32 should be written with n and byte $33 with m. If it is an earlier
         // (non-standard) interpreter, it should leave these bytes as 0.
-        bytes.set_u8(Address::from_byte_address(0x0032), int_meta.standard_version_major).unwrap();
-        bytes.set_u8(Address::from_byte_address(0x0033), int_meta.standard_version_minor).unwrap();
+        bytes
+            .set_u8(
+                Address::from_byte_address(0x0032),
+                int_meta.standard_version_major,
+            )
+            .unwrap();
+        bytes
+            .set_u8(
+                Address::from_byte_address(0x0033),
+                int_meta.standard_version_minor,
+            )
+            .unwrap();
     }
 }
 

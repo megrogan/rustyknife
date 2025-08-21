@@ -14,14 +14,21 @@ pub struct DictionaryTable {
 }
 
 impl DictionaryTable {
-    pub fn new(version: Version, bytes: Rc<RefCell<Bytes>>, base_addr: Address) -> Result<Self, FormatError> {
+    pub fn new(
+        version: Version,
+        bytes: Rc<RefCell<Bytes>>,
+        base_addr: Address,
+    ) -> Result<Self, FormatError> {
         // It may be legal to have the dictionary table outside the address range, as long as it's
         // never used. But more likely, this is a bug somewhere.
-        bytes.borrow().get_u16(base_addr).or(Err(FormatError::DictionaryTableOutOfRange(base_addr)))?;
+        bytes
+            .borrow()
+            .get_u16(base_addr)
+            .or(Err(FormatError::DictionaryTableOutOfRange(base_addr)))?;
         Ok(DictionaryTable {
-            version: version,
-            bytes: bytes,
-            base_addr: base_addr,
+            version,
+            bytes,
+            base_addr,
         })
     }
 
@@ -36,9 +43,9 @@ impl DictionaryTable {
             num_entries: num_entries as usize,
         };
         Ok(WordIter {
-            split_chars: split_chars,
-            entry_table: entry_table,
-            text: text,
+            split_chars,
+            entry_table,
+            text,
             next_idx: 0,
         })
     }
@@ -46,7 +53,7 @@ impl DictionaryTable {
     fn split_chars(&self) -> Result<HashSet<u8>, RuntimeError> {
         // 13.2
         // The table begins with a short header:
-        // 
+        //
         //   n     list of keyboard input codes   entry-length  number-of-entries
         //  byte  ------n bytes-----------------      byte         2-byte word
         //
@@ -55,7 +62,11 @@ impl DictionaryTable {
         // character (32) should never be a word-separator.
         let n = self.bytes.borrow().get_u8(self.base_addr)? as usize;
         let mut split_chars = HashSet::with_capacity(n);
-        for &byte in self.bytes.borrow().get_slice(self.base_addr + 1..self.base_addr + 1 + n)? {
+        for &byte in self
+            .bytes
+            .borrow()
+            .get_slice(self.base_addr + 1..self.base_addr + 1 + n)?
+        {
             split_chars.insert(byte);
         }
         Ok(split_chars)
@@ -73,8 +84,10 @@ impl DictionaryTable {
         let entry_length = self.bytes.borrow().get_u8(addr)?;
         let entry_count = self.bytes.borrow().get_u16(addr + 1)?;
         match self.version {
-            V1 | V2 | V3 => if entry_length < 4 {
-                return Err(RuntimeError::DictionaryTableCorrupt);
+            V1 | V2 | V3 => {
+                if entry_length < 4 {
+                    return Err(RuntimeError::DictionaryTableCorrupt);
+                }
             }
         }
         Ok((entry_length, entry_count))
@@ -95,7 +108,7 @@ struct EntryTable {
 impl EntryTable {
     fn find_word(&self, word: &[u8]) -> Result<Option<Address>, RuntimeError> {
         if self.num_entries == 0 {
-            return Ok(None)
+            return Ok(None);
         }
 
         // Truncate the word to the dictionary word length so we can compare for equality.
@@ -111,14 +124,18 @@ impl EntryTable {
             // dictionary entry instead.
             let entry_vec = self.decode_entry(mid)?;
             let entry: &[u8] = &entry_vec;
-            if entry < word {
-                left = mid + 1;
-            } else if entry > word {
-                // TODO searching for a word before the very first word in the dictionary causes
-                // underflow! repro case: type "!"
-                right = mid - 1;
-            } else { // entry == word
-                return Ok(Some(self.entry_addr(mid)));
+            match entry.cmp(word) {
+                std::cmp::Ordering::Less => {
+                    left = mid + 1;
+                }
+                std::cmp::Ordering::Greater => {
+                    // TODO searching for a word before the very first word in the dictionary causes
+                    // underflow! repro case: type "!"
+                    right = mid - 1;
+                }
+                std::cmp::Ordering::Equal => {
+                    return Ok(Some(self.entry_addr(mid)));
+                }
             }
         }
         Ok(None)
@@ -130,20 +147,20 @@ impl EntryTable {
 
     fn encoded_word_len(&self) -> usize {
         match self.version {
-            V1 | V2 | V3 => 4
+            V1 | V2 | V3 => 4,
         }
     }
 
     fn decoded_word_len(&self) -> usize {
         match self.version {
-            V1 | V2 | V3 => 6
+            V1 | V2 | V3 => 6,
         }
     }
 
     fn decode_entry(&self, idx: usize) -> Result<Vec<u8>, RuntimeError> {
         let addr = self.entry_addr(idx);
         let bytes = self.bytes.borrow();
-        let slice = bytes.get_slice(addr..addr + self.encoded_word_len())?.clone();
+        let slice = bytes.get_slice(addr..addr + self.encoded_word_len())?;
         let string = ZString::from(slice).decode(self.version, None)?;
         Ok(string.into_bytes())
     }
@@ -183,7 +200,7 @@ impl Iterator for WordIter {
         // ignored. Word separators also divide words, but each one of them is considered a word in
         // its own right. Thus, the erratically-spaced text "fred,go fishing" is divided into four
         // words:
-        // 
+        //
         // fred / , / go / fishing
         while !self.done() && self.is_space_char(self.text[self.next_idx]) {
             self.next_idx += 1;
@@ -202,7 +219,7 @@ impl Iterator for WordIter {
         let word = &self.text[start_idx..self.next_idx];
         match self.entry_table.find_word(word) {
             Ok(addr) => Some(Ok(WordRef {
-                addr: addr,
+                addr,
                 len: (self.next_idx - start_idx) as u8,
                 start_idx: (start_idx + 1) as u8, // + 1 because the text buffer length byte is 0
             })),

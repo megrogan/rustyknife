@@ -1,4 +1,4 @@
-#![feature(unsized_locals)]
+//#![feature(unsized_locals)]
 
 use difference::Changeset;
 use rustyknife::*;
@@ -30,15 +30,17 @@ fn run_zmachine(mut zmachine: ZMachine, inputs: &[&str]) -> String {
                 }
                 Continuation::ReadLine(next) => {
                     let line = input.next().unwrap();
-                    continuation = next(&line);
+                    continuation = next(line);
                 }
                 Continuation::Quit => {
                     break;
                 }
-            }
+            },
             Err(err) => {
-                panic!("Z-machine generated a runtime error: {}\nOutput so far:\n{}",
-                       err, output);
+                panic!(
+                    "Z-machine generated a runtime error: {}\nOutput so far:\n{}",
+                    err, output
+                );
             }
         }
     }
@@ -47,11 +49,13 @@ fn run_zmachine(mut zmachine: ZMachine, inputs: &[&str]) -> String {
 }
 
 fn read_output(filename: &str) -> String {
-    String::from_utf8(fs::read(filename).unwrap()).unwrap().replace("\r\n", "\n")
+    String::from_utf8(fs::read(filename).unwrap())
+        .unwrap()
+        .replace("\r\n", "\n")
 }
 
 fn assert_eq_with_diff(actual: &str, expected: &str) {
-    let diff = Changeset::new(&actual, &expected, "");
+    let diff = Changeset::new(actual, expected, "");
     assert!(actual == expected,
         "Actual output did not match expected output. Difference (green = expected, red = actual):\n\n{}\n", diff);
 }
@@ -60,7 +64,7 @@ fn assert_eq_with_diff(actual: &str, expected: &str) {
 fn test_strictz() {
     let zmachine = make_zmachine("tests/strictz/strictz.z3");
 
-    let output = run_zmachine(zmachine, &[&"N"]);
+    let output = run_zmachine(zmachine, &["N"]);
 
     assert_eq_with_diff(&output, &read_output("tests/strictz/strictz.out3"));
 }
@@ -84,25 +88,28 @@ fn test_czech() {
 #[test]
 fn test_zork1() {
     let zmachine = make_zmachine("tests/zork1/zork1.z3");
-    
-    let output = run_zmachine(zmachine, &[
-        &"open mailbox",
-        &"take leaflet and read it",
-        &"go north",
-        &"e",
-        &"open window and enter",
-        &"up",
-        &"down",
-        &"take bottle and sack",
-        &"open sack",
-        &"inventory",
-        &"west",
-        &"move rug and open trap door",
-        &"take sword and turn on lamp",
-        &"go down" /* and realise that you left the lamp behind */,
-        &"quit",
-        &"y",
-    ]);
+
+    let output = run_zmachine(
+        zmachine,
+        &[
+            "open mailbox",
+            "take leaflet and read it",
+            "go north",
+            "e",
+            "open window and enter",
+            "up",
+            "down",
+            "take bottle and sack",
+            "open sack",
+            "inventory",
+            "west",
+            "move rug and open trap door",
+            "take sword and turn on lamp",
+            "go down", /* and realise that you left the lamp behind */
+            "quit",
+            "y",
+        ],
+    );
 
     assert_eq_with_diff(&output, &read_output("tests/zork1/zork1.out3"));
 }

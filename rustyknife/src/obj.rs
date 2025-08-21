@@ -21,22 +21,32 @@ pub struct ObjectTable {
 }
 
 impl ObjectTable {
-    pub fn new(version: Version, bytes: Rc<RefCell<Bytes>>, base_addr: Address, abbrs_table: AbbreviationsTable) -> Result<ObjectTable, FormatError> {
-        bytes.borrow().get_u16(base_addr).or(Err(FormatError::ObjectsTableOutOfRange(base_addr)))?;
+    pub fn new(
+        version: Version,
+        bytes: Rc<RefCell<Bytes>>,
+        base_addr: Address,
+        abbrs_table: AbbreviationsTable,
+    ) -> Result<ObjectTable, FormatError> {
+        bytes
+            .borrow()
+            .get_u16(base_addr)
+            .or(Err(FormatError::ObjectsTableOutOfRange(base_addr)))?;
         let start_addr = match version {
             // 12.2
             // The table begins with a block known as the property defaults table. This contains 31
             // words in Versions 1 to 3 ...
-            V1 | V2 | V3 => base_addr + 31 * 2
-            // ... and 63 in Versions 4 and later.
+            V1 | V2 | V3 => base_addr + 31 * 2, // ... and 63 in Versions 4 and later.
         };
-        bytes.borrow().get_u16(start_addr).or(Err(FormatError::ObjectsTableOutOfRange(start_addr)))?;
+        bytes
+            .borrow()
+            .get_u16(start_addr)
+            .or(Err(FormatError::ObjectsTableOutOfRange(start_addr)))?;
         Ok(ObjectTable {
-            version: version,
-            bytes: bytes,
+            version,
+            bytes,
             prop_defaults_addr: base_addr,
-            start_addr: start_addr,
-            abbrs_table: abbrs_table,
+            start_addr,
+            abbrs_table,
         })
     }
 
@@ -44,7 +54,13 @@ impl ObjectTable {
         Ok(if obj.is_null() {
             None
         } else {
-            Some(ObjectRef::new(self.version, self.bytes.clone(), self.abbrs_table.clone(), obj, self.start_addr)?)
+            Some(ObjectRef::new(
+                self.version,
+                self.bytes.clone(),
+                self.abbrs_table.clone(),
+                obj,
+                self.start_addr,
+            )?)
         })
     }
 
@@ -55,7 +71,10 @@ impl ObjectTable {
         // property block for any object be anywhere, but this convention is consistently
         // followed."
         // https://ericlippert.com/2016/03/02/egyptian-room/
-        let end = self.get_obj_ref(Object::from_number(1))?.unwrap().props_addr()?;
+        let end = self
+            .get_obj_ref(Object::from_number(1))?
+            .unwrap()
+            .props_addr()?;
         Ok((end - self.start_addr) / obj_size(self.version))
     }
 
@@ -65,9 +84,11 @@ impl ObjectTable {
         let offset = match self.version {
             V1 | V2 | V3 => -1,
         };
-        Ok(PropertyRef::new(self.version, self.bytes.clone(), prop_data_addr + offset)?
-            .ok_or(RuntimeError::InvalidPropertyAddress(prop_data_addr))?
-            .len())
+        Ok(
+            PropertyRef::new(self.version, self.bytes.clone(), prop_data_addr + offset)?
+                .ok_or(RuntimeError::InvalidPropertyAddress(prop_data_addr))?
+                .len(),
+        )
     }
 
     pub fn get_prop_default(&self, prop: Property) -> Result<u16, RuntimeError> {
@@ -99,7 +120,12 @@ impl ObjectTable {
         Ok(out)
     }
 
-    fn write_obj_tree(&self, obj: Object, depth: usize, out: &mut String) -> Result<(), RuntimeError> {
+    fn write_obj_tree(
+        &self,
+        obj: Object,
+        depth: usize,
+        out: &mut String,
+    ) -> Result<(), RuntimeError> {
         let obj_ref = self.get_obj_ref(obj)?.unwrap();
         out.push_str(&"      ".repeat(depth));
         out.push_str(&obj_ref.to_string());
@@ -115,7 +141,7 @@ impl ObjectTable {
 
 fn obj_size(version: Version) -> usize {
     match version {
-        V1 | V2 | V3 => 9
+        V1 | V2 | V3 => 9,
     }
 }
 
@@ -150,7 +176,7 @@ impl Object {
         if match version {
             // 12.3.1
             // In Versions 1 to 3, there are at most 255 objects...
-            V1 | V2 | V3 => self.0 >= 1 && self.0 <= 255
+            V1 | V2 | V3 => self.0 >= 1 && self.0 <= 255,
         } {
             Ok(())
         } else {
@@ -177,7 +203,7 @@ impl Property {
     }
 
     pub fn from_number(num: u8) -> Property {
-        Property(num as u8)
+        Property(num)
     }
 
     pub fn to_number(self) -> u8 {
@@ -196,7 +222,7 @@ impl Property {
         if match version {
             // The maximum property number isn't explicitly written in the spec, but can be
             // inferred from the way the property table is stored.
-            V1 | V2 | V3 => self.0 >= 1 && self.0 <= 31
+            V1 | V2 | V3 => self.0 >= 1 && self.0 <= 31,
         } {
             Ok(())
         } else {
@@ -222,16 +248,22 @@ pub struct ObjectRef {
 }
 
 impl ObjectRef {
-    fn new(version: Version, bytes: Rc<RefCell<Bytes>>, abbrs_table: AbbreviationsTable, obj: Object, base_addr: Address) -> Result<ObjectRef, RuntimeError> {
+    fn new(
+        version: Version,
+        bytes: Rc<RefCell<Bytes>>,
+        abbrs_table: AbbreviationsTable,
+        obj: Object,
+        base_addr: Address,
+    ) -> Result<ObjectRef, RuntimeError> {
         obj.check_valid(version)?;
         let addr = base_addr + obj.index() * obj_size(version);
         Ok(ObjectRef {
-            version: version,
-            bytes: bytes,
-            abbrs_table: abbrs_table,
-            obj: obj,
-            base_addr: base_addr,
-            addr: addr,
+            version,
+            bytes,
+            abbrs_table,
+            obj,
+            base_addr,
+            addr,
         })
     }
 
@@ -241,20 +273,30 @@ impl ObjectRef {
         let text_addr = header_addr + 1;
         // This one is a bit special because 0-length zstrings are possible. So we construct it
         // from a slice directly, instead of scanning for a terminator word.
-        let zstring = ZString::from(self.bytes.borrow().get_slice(text_addr..text_addr + 2 * text_length as usize)?);
+        let zstring = ZString::from(
+            self.bytes
+                .borrow()
+                .get_slice(text_addr..text_addr + 2 * text_length as usize)?,
+        );
         zstring.decode(self.version, Some(&self.abbrs_table))
     }
 
     pub fn parent(&self) -> Result<Object, RuntimeError> {
-        Ok(Object::from_number(self.bytes.borrow().get_u8(self.parent_addr())? as u16))
+        Ok(Object::from_number(
+            self.bytes.borrow().get_u8(self.parent_addr())? as u16,
+        ))
     }
 
     pub fn sibling(&self) -> Result<Object, RuntimeError> {
-        Ok(Object::from_number(self.bytes.borrow().get_u8(self.sibling_addr())? as u16))
+        Ok(Object::from_number(
+            self.bytes.borrow().get_u8(self.sibling_addr())? as u16,
+        ))
     }
 
     pub fn child(&self) -> Result<Object, RuntimeError> {
-        Ok(Object::from_number(self.bytes.borrow().get_u8(self.child_addr())? as u16))
+        Ok(Object::from_number(
+            self.bytes.borrow().get_u8(self.child_addr())? as u16,
+        ))
     }
 
     pub fn insert_into(&mut self, dest: Object) -> Result<(), RuntimeError> {
@@ -267,10 +309,16 @@ impl ObjectRef {
         self.remove_from_parent()?;
 
         if dest.is_null() {
-            return Ok(())
+            return Ok(());
         }
 
-        let mut dest_ref = ObjectRef::new(self.version, self.bytes.clone(), self.abbrs_table.clone(), dest, self.base_addr)?;
+        let mut dest_ref = ObjectRef::new(
+            self.version,
+            self.bytes.clone(),
+            self.abbrs_table.clone(),
+            dest,
+            self.base_addr,
+        )?;
         self.set_parent(dest)?;
         self.set_sibling(dest_ref.child()?)?;
         dest_ref.set_child(self.obj)?;
@@ -282,10 +330,22 @@ impl ObjectRef {
         // remain in its possession.)
         let parent = self.parent()?;
         if !parent.is_null() {
-            let mut parent_ref = ObjectRef::new(self.version, self.bytes.clone(), self.abbrs_table.clone(), parent, self.base_addr)?;
+            let mut parent_ref = ObjectRef::new(
+                self.version,
+                self.bytes.clone(),
+                self.abbrs_table.clone(),
+                parent,
+                self.base_addr,
+            )?;
             let mut prev_sibling = parent_ref.child()?;
             while !prev_sibling.is_null() {
-                let mut prev_sibling_ref = ObjectRef::new(self.version, self.bytes.clone(), self.abbrs_table.clone(), prev_sibling, self.base_addr)?;
+                let mut prev_sibling_ref = ObjectRef::new(
+                    self.version,
+                    self.bytes.clone(),
+                    self.abbrs_table.clone(),
+                    prev_sibling,
+                    self.base_addr,
+                )?;
                 let next = prev_sibling_ref.sibling()?;
                 if next == self.obj {
                     prev_sibling_ref.set_sibling(self.sibling()?)?;
@@ -319,7 +379,7 @@ impl ObjectRef {
         for res in self.iter_props()? {
             let prop_ref = res?;
             if prop_ref.prop == prop {
-                return Ok(Some(prop_ref))
+                return Ok(Some(prop_ref));
             }
         }
         Ok(None)
@@ -340,29 +400,32 @@ impl ObjectRef {
 
     fn parent_addr(&self) -> Address {
         match self.version {
-            V1 | V2 | V3 => self.addr + 4
+            V1 | V2 | V3 => self.addr + 4,
         }
     }
 
     fn sibling_addr(&self) -> Address {
         match self.version {
-            V1 | V2 | V3 => self.addr + 5
+            V1 | V2 | V3 => self.addr + 5,
         }
     }
 
     fn child_addr(&self) -> Address {
         match self.version {
-            V1 | V2 | V3 => self.addr + 6
+            V1 | V2 | V3 => self.addr + 6,
         }
     }
 
     fn props_header_addr(&self) -> Result<Address, RuntimeError> {
         let offset = match self.version {
-            V1 | V2 | V3 => 7
+            V1 | V2 | V3 => 7,
         };
         Ok(Address::from_byte_address(
-            self.bytes.borrow().get_u16(self.addr + offset)
-                .or(Err(RuntimeError::ObjectCorrupt(self.obj)))?))
+            self.bytes
+                .borrow()
+                .get_u16(self.addr + offset)
+                .or(Err(RuntimeError::ObjectCorrupt(self.obj)))?,
+        ))
     }
 
     fn props_addr(&self) -> Result<Address, RuntimeError> {
@@ -376,9 +439,12 @@ impl ObjectRef {
         //   -----byte----   --some even number of bytes---
         //
         // where the text-length is the number of 2-byte words making up the text, which is stored
-        // in the usual format. 
+        // in the usual format.
         let header_addr = self.props_header_addr()?;
-        let text_length = self.bytes.borrow().get_u8(header_addr)
+        let text_length = self
+            .bytes
+            .borrow()
+            .get_u8(header_addr)
             .or(Err(RuntimeError::ObjectCorrupt(self.obj)))?;
         Ok(header_addr + 1 + text_length as usize * 2)
     }
@@ -413,19 +479,34 @@ impl ObjectRef {
 
 impl Display for ObjectRef {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        write!(f, "[{:3}] {:30}  parent: [{:3}]  child: [{:3}]  sibling: [{:3}]  {{",
-                self.obj,
-                self.name().unwrap_or_else(|e| e.to_string()),
-                self.parent().map(|o| o.to_string()).unwrap_or_else(|e| e.to_string()),
-                self.child().map(|o| o.to_string()).unwrap_or_else(|e| e.to_string()),
-                self.sibling().map(|o| o.to_string()).unwrap_or_else(|e| e.to_string()))?;
+        write!(
+            f,
+            "[{:3}] {:30}  parent: [{:3}]  child: [{:3}]  sibling: [{:3}]  {{",
+            self.obj,
+            self.name().unwrap_or_else(|e| e.to_string()),
+            self.parent()
+                .map(|o| o.to_string())
+                .unwrap_or_else(|e| e.to_string()),
+            self.child()
+                .map(|o| o.to_string())
+                .unwrap_or_else(|e| e.to_string()),
+            self.sibling()
+                .map(|o| o.to_string())
+                .unwrap_or_else(|e| e.to_string())
+        )?;
         if let Ok(iter) = self.iter_props() {
             let mut first = true;
             for prop_ref in iter {
                 if !first {
                     write!(f, ", ")?;
                 }
-                write!(f, "{}", prop_ref.map(|p| p.to_string()).unwrap_or_else(|e| e.to_string()))?;
+                write!(
+                    f,
+                    "{}",
+                    prop_ref
+                        .map(|p| p.to_string())
+                        .unwrap_or_else(|e| e.to_string())
+                )?;
                 first = false;
             }
         } else {
@@ -437,6 +518,7 @@ impl Display for ObjectRef {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct PropertyRef {
     version: Version,
     bytes: Rc<RefCell<Bytes>>,
@@ -446,7 +528,11 @@ pub struct PropertyRef {
 }
 
 impl PropertyRef {
-    fn new(version: Version, bytes: Rc<RefCell<Bytes>>, size_byte_addr: Address) -> Result<Option<PropertyRef>, RuntimeError> {
+    fn new(
+        version: Version,
+        bytes: Rc<RefCell<Bytes>>,
+        size_byte_addr: Address,
+    ) -> Result<Option<PropertyRef>, RuntimeError> {
         // In Versions 1 to 3, each property is stored as a block
         //
         //    size byte     the actual property data
@@ -465,11 +551,11 @@ impl PropertyRef {
                     let len = size_byte.bits(BIT5..=BIT7) + 1;
                     let prop = Property::from_number(prop_num);
                     Ok(Some(PropertyRef {
-                        version: version,
-                        bytes: bytes,
-                        prop: prop,
+                        version,
+                        bytes,
+                        prop,
                         data_addr: size_byte_addr + 1,
-                        len: len,
+                        len,
                     }))
                 }
             }
@@ -492,7 +578,7 @@ impl PropertyRef {
         match self.len {
             1 => Ok(self.bytes.borrow().get_u8(self.data_addr)? as u16),
             2 => Ok(self.bytes.borrow().get_u16(self.data_addr)?),
-            _ => Err(RuntimeError::InvalidPropertySize(self.len))
+            _ => Err(RuntimeError::InvalidPropertySize(self.len)),
         }
     }
 
@@ -525,10 +611,14 @@ pub struct PropertyIterator {
 }
 
 impl PropertyIterator {
-    fn new(version: Version, bytes: Rc<RefCell<Bytes>>, props_addr: Option<Address>) -> Result<PropertyIterator, RuntimeError> {
+    fn new(
+        version: Version,
+        bytes: Rc<RefCell<Bytes>>,
+        props_addr: Option<Address>,
+    ) -> Result<PropertyIterator, RuntimeError> {
         Ok(PropertyIterator {
-            version: version,
-            bytes: bytes,
+            version,
+            bytes,
             next_addr: props_addr,
         })
     }
@@ -547,7 +637,7 @@ impl Iterator for PropertyIterator {
                         None
                     }
                 }
-                Err(err) => Some(Err(err))
+                Err(err) => Some(Err(err)),
             }
         } else {
             None
@@ -569,7 +659,7 @@ impl Attribute {
         if match version {
             // The maximum property number isn't explicitly written in the spec, but can be
             // inferred from the way the property table is stored.
-            V1 | V2 | V3 => self.0 <= 31
+            V1 | V2 | V3 => self.0 <= 31,
         } {
             Ok(())
         } else {
@@ -593,11 +683,17 @@ impl Display for ObjectTable {
             Ok(n) => {
                 for i in 1..=(n as u16) {
                     let obj = Object::from_number(i);
-                    writeln!(f, "{}", self.get_obj_ref(obj).map(|obj| obj.unwrap().to_string()).unwrap_or_else(|e| e.to_string()))?;
+                    writeln!(
+                        f,
+                        "{}",
+                        self.get_obj_ref(obj)
+                            .map(|obj| obj.unwrap().to_string())
+                            .unwrap_or_else(|e| e.to_string())
+                    )?;
                 }
                 Ok(())
             }
-            Err(err) => writeln!(f, "{}", err)
+            Err(err) => writeln!(f, "{}", err),
         }
     }
 }

@@ -30,18 +30,24 @@ impl Memory {
         let header = Header::new(bytes.clone())?;
         let version = header.version();
         let globals_table = GlobalsTable::new(version, bytes.clone(), header.globals_table_addr())?;
-        let abbrs_table = AbbreviationsTable::new(version, bytes.clone(), header.abbrs_table_addr())?;
-        let obj_table = ObjectTable::new(version, bytes.clone(), header.obj_table_addr(), abbrs_table.clone())?;
+        let abbrs_table =
+            AbbreviationsTable::new(version, bytes.clone(), header.abbrs_table_addr())?;
+        let obj_table = ObjectTable::new(
+            version,
+            bytes.clone(),
+            header.obj_table_addr(),
+            abbrs_table.clone(),
+        )?;
         let dict_table = DictionaryTable::new(version, bytes.clone(), header.dict_table_addr())?;
 
         Ok(Memory {
-            version: version,
-            bytes: bytes,
-            header: header,
-            globals_table: globals_table,
-            abbrs_table: abbrs_table,
-            obj_table: obj_table,
-            dict_table: dict_table,
+            version,
+            bytes,
+            header,
+            globals_table,
+            abbrs_table,
+            obj_table,
+            dict_table,
         })
     }
 

@@ -1,6 +1,6 @@
-use crate::errors::{ErrorLocation, RuntimeError};
 use crate::bits::*;
 use crate::bytes::Address;
+use crate::errors::{ErrorLocation, RuntimeError};
 use crate::instr::*;
 use crate::mem::*;
 use crate::version::*;
@@ -14,7 +14,7 @@ pub struct InstructionDecoder<'a> {
 impl<'a> InstructionDecoder<'a> {
     pub fn new(mem: &'a Memory, pc: Address) -> InstructionDecoder<'a> {
         InstructionDecoder {
-            mem: mem,
+            mem,
             start_addr: pc,
             next_addr: pc,
         }
@@ -59,7 +59,8 @@ impl<'a> InstructionDecoder<'a> {
         let instruction_form = self.instruction_form(opcode_byte)?;
         let operand_count = self.operand_count(instruction_form, opcode_byte)?;
         let opcode_number = self.read_opcode_number(instruction_form, opcode_byte)?;
-        let operand_types = self.read_operand_types(instruction_form, opcode_byte, opcode_number)?;
+        let operand_types =
+            self.read_operand_types(instruction_form, opcode_byte, opcode_number)?;
 
         let instr = match operand_count {
             OperandCount::Two => {
@@ -89,7 +90,13 @@ impl<'a> InstructionDecoder<'a> {
                     0x16 => Instruction::Mul(var_operands, self.read_store_var()?),
                     0x17 => Instruction::Div(var_operands, self.read_store_var()?),
                     0x18 => Instruction::Mod(var_operands, self.read_store_var()?),
-                    _ => return Err(RuntimeError::UnknownOpcode(operand_count, opcode_number, self.loc()))
+                    _ => {
+                        return Err(RuntimeError::UnknownOpcode(
+                            operand_count,
+                            opcode_number,
+                            self.loc(),
+                        ))
+                    }
                 }
             }
             OperandCount::One => {
@@ -99,8 +106,14 @@ impl<'a> InstructionDecoder<'a> {
                     // For these two, we are relying on left-to-right evaluation order of
                     // arguments. According to https://github.com/rust-lang/rust/issues/15300 this
                     // should be safe; it's just not documented.
-                    0x01 => Instruction::GetSibling(operand, self.read_store_var()?, self.read_branch()?),
-                    0x02 => Instruction::GetChild(operand, self.read_store_var()?, self.read_branch()?),
+                    0x01 => Instruction::GetSibling(
+                        operand,
+                        self.read_store_var()?,
+                        self.read_branch()?,
+                    ),
+                    0x02 => {
+                        Instruction::GetChild(operand, self.read_store_var()?, self.read_branch()?)
+                    }
                     0x03 => Instruction::GetParent(operand, self.read_store_var()?),
                     0x04 => Instruction::GetPropLen(operand, self.read_store_var()?),
                     0x05 => Instruction::Inc(operand),
@@ -113,28 +126,38 @@ impl<'a> InstructionDecoder<'a> {
                     0x0d => Instruction::PrintPaddr(operand),
                     0x0e => Instruction::Load(operand, self.read_store_var()?),
                     0x0f => Instruction::Not(operand, self.read_store_var()?),
-                    _ => return Err(RuntimeError::UnknownOpcode(operand_count, opcode_number, self.loc()))
+                    _ => {
+                        return Err(RuntimeError::UnknownOpcode(
+                            operand_count,
+                            opcode_number,
+                            self.loc(),
+                        ))
+                    }
                 }
             }
-            OperandCount::Zero => {
-                match opcode_number {
-                    0x00 => Instruction::Rtrue(),
-                    0x01 => Instruction::Rfalse(),
-                    0x02 => Instruction::Print(self.read_string()?),
-                    0x03 => Instruction::PrintRet(self.read_string()?),
-                    0x04 => Instruction::Nop(),
-                    0x05 => Instruction::Save(self.read_branch()?),
-                    0x06 => Instruction::Restore(self.read_branch()?),
-                    0x07 => Instruction::Restart(),
-                    0x08 => Instruction::RetPopped(),
-                    0x09 => Instruction::Pop(),
-                    0x0a => Instruction::Quit(),
-                    0x0b => Instruction::NewLine(),
-                    0x0c => Instruction::ShowStatus(),
-                    0x0d => Instruction::Verify(self.read_branch()?),
-                    _ => return Err(RuntimeError::UnknownOpcode(operand_count, opcode_number, self.loc()))
+            OperandCount::Zero => match opcode_number {
+                0x00 => Instruction::Rtrue(),
+                0x01 => Instruction::Rfalse(),
+                0x02 => Instruction::Print(self.read_string()?),
+                0x03 => Instruction::PrintRet(self.read_string()?),
+                0x04 => Instruction::Nop(),
+                0x05 => Instruction::Save(self.read_branch()?),
+                0x06 => Instruction::Restore(self.read_branch()?),
+                0x07 => Instruction::Restart(),
+                0x08 => Instruction::RetPopped(),
+                0x09 => Instruction::Pop(),
+                0x0a => Instruction::Quit(),
+                0x0b => Instruction::NewLine(),
+                0x0c => Instruction::ShowStatus(),
+                0x0d => Instruction::Verify(self.read_branch()?),
+                _ => {
+                    return Err(RuntimeError::UnknownOpcode(
+                        operand_count,
+                        opcode_number,
+                        self.loc(),
+                    ))
                 }
-            }
+            },
             OperandCount::Var => {
                 let var_operands = self.read_var_operands(&operand_types)?;
                 match opcode_number {
@@ -152,7 +175,13 @@ impl<'a> InstructionDecoder<'a> {
                     0x0b => Instruction::SetWindow(var_operands),
                     0x13 => Instruction::OutputStream(var_operands),
                     0x14 => Instruction::InputStream(var_operands),
-                    _ => return Err(RuntimeError::UnknownOpcode(operand_count, opcode_number, self.loc()))
+                    _ => {
+                        return Err(RuntimeError::UnknownOpcode(
+                            operand_count,
+                            opcode_number,
+                            self.loc(),
+                        ))
+                    }
                 }
             }
         };
@@ -171,18 +200,24 @@ impl<'a> InstructionDecoder<'a> {
                     // If the opcode is 190 ($BE in hexadecimal) and the version is 5 or later, the
                     // form is "extended". ...
                     match self.mem.version() {
-                        V1 | V2 | V3 => Err(RuntimeError::InvalidInstruction(opcode_byte, self.loc()))
+                        V1 | V2 | V3 => {
+                            Err(RuntimeError::InvalidInstruction(opcode_byte, self.loc()))
+                        }
                     }
                 } else {
                     // ... Otherwise, the form is "long".
                     Ok(InstructionForm::Long)
                 }
-            },
-            _ => panic!("two bits can never exceed 0b11")
+            }
+            _ => panic!("two bits can never exceed 0b11"),
         }
     }
 
-    fn operand_count(&self, instruction_form: InstructionForm, opcode_byte: u8) -> Result<OperandCount, RuntimeError> {
+    fn operand_count(
+        &self,
+        instruction_form: InstructionForm,
+        opcode_byte: u8,
+    ) -> Result<OperandCount, RuntimeError> {
         match instruction_form {
             // 4.3.1
             // In short form, bits 4 and 5 of the opcode byte give an operand type as above. If
@@ -213,7 +248,11 @@ impl<'a> InstructionDecoder<'a> {
         }
     }
 
-    fn read_opcode_number(&mut self, instruction_form: InstructionForm, opcode_byte: u8) -> Result<u8, RuntimeError> {
+    fn read_opcode_number(
+        &mut self,
+        instruction_form: InstructionForm,
+        opcode_byte: u8,
+    ) -> Result<u8, RuntimeError> {
         match instruction_form {
             // 4.3.1
             // In short form, ... In either case the opcode number is given in the bottom 4 bits.
@@ -230,15 +269,20 @@ impl<'a> InstructionDecoder<'a> {
         }
     }
 
-    fn read_operand_types(&mut self, instruction_form: InstructionForm, opcode_byte: u8, opcode_number: u8) -> Result<Vec<OperandType>, RuntimeError> {
+    fn read_operand_types(
+        &mut self,
+        instruction_form: InstructionForm,
+        opcode_byte: u8,
+        opcode_number: u8,
+    ) -> Result<Vec<OperandType>, RuntimeError> {
         // 4.4
         // Next, the types of the operands are specified.
         match instruction_form {
             // 4.4.1
             // In short form, bits 4 and 5 of the opcode give the type.
-            InstructionForm::Short => Ok(vec![
-                OperandType::from_bits(opcode_byte.bits(BIT4..=BIT5)),
-            ]),
+            InstructionForm::Short => {
+                Ok(vec![OperandType::from_bits(opcode_byte.bits(BIT4..=BIT5))])
+            }
             // 4.4.2
             // In long form, bit 6 of the opcode gives the type of the first operand, bit 5 of the
             // second. A value of 0 means a small constant and 1 means a variable. (If a 2OP
@@ -259,20 +303,28 @@ impl<'a> InstructionDecoder<'a> {
                 // In the special case of the "double variable" VAR opcodes call_vs2 and call_vn2
                 // (opcode numbers 12 and 26), a second byte of types is given, containing the
                 // types for the next four operands.
-                let num_bytes = if opcode_number == 12 || opcode_number == 26 { 2 } else { 1 };
+                let num_bytes = if opcode_number == 12 || opcode_number == 26 {
+                    2
+                } else {
+                    1
+                };
                 let mut types = Vec::with_capacity(4 * num_bytes);
                 let mut expect_omitted = false;
                 for _ in 0..num_bytes {
                     let byte = self.next_u8()?;
                     for &start_bit in &[BIT6, BIT4, BIT2, BIT0] {
-                        let operand_type = OperandType::from_bits(byte.bits(start_bit..=start_bit + 1));
+                        let operand_type =
+                            OperandType::from_bits(byte.bits(start_bit..=start_bit + 1));
                         match operand_type {
                             OperandType::Omitted => {
                                 expect_omitted = true;
                             }
                             _ => {
                                 if expect_omitted {
-                                    return Err(RuntimeError::InvalidOperandTypes(byte, self.loc()));
+                                    return Err(RuntimeError::InvalidOperandTypes(
+                                        byte,
+                                        self.loc(),
+                                    ));
                                 }
                                 types.push(operand_type);
                             }
@@ -280,7 +332,7 @@ impl<'a> InstructionDecoder<'a> {
                     }
                 }
                 Ok(types)
-            },
+            }
         }
     }
 
@@ -289,11 +341,14 @@ impl<'a> InstructionDecoder<'a> {
             OperandType::LargeConstant => Operand::LargeConstant(self.next_u16()?),
             OperandType::SmallConstant => Operand::SmallConstant(self.next_u8()?),
             OperandType::Variable => Operand::Variable(Variable::from_byte(self.next_u8()?, false)),
-            OperandType::Omitted => panic!("cannot read an omitted operand")
+            OperandType::Omitted => panic!("cannot read an omitted operand"),
         })
     }
 
-    fn read_var_operands(&mut self, operand_types: &Vec<OperandType>) -> Result<VarOperands, RuntimeError> {
+    fn read_var_operands(
+        &mut self,
+        operand_types: &Vec<OperandType>,
+    ) -> Result<VarOperands, RuntimeError> {
         // 4.5
         // The operands are given next. Operand counts of 0OP, 1OP or 2OP require 0, 1 or 2
         // operands to be given, respectively. If the count is VAR, there must be as many operands
@@ -338,7 +393,8 @@ impl<'a> InstructionDecoder<'a> {
             // If bit 6 is clear, then the offset is a signed 14-bit number given in bits 0 to
             // 5 of the first byte followed by all 8 of the second.
             let second_byte = self.next_u8()?;
-            let unsigned_offset = (((first_byte.bits(BIT0..=BIT5) as u16) << 8) | second_byte as u16) as i16;
+            let unsigned_offset =
+                (((first_byte.bits(BIT0..=BIT5) as u16) << 8) | second_byte as u16) as i16;
             if unsigned_offset & (1i16 << 13) == 0 {
                 unsigned_offset
             } else {
@@ -355,7 +411,7 @@ impl<'a> InstructionDecoder<'a> {
             // 4.7.2
             // Otherwise, a branch moves execution to the instruction at address
             // "Address after branch data + Offset - 2".
-            _ => BranchTarget::ToAddress(self.next_addr + (offset as i32 - 2))
+            _ => BranchTarget::ToAddress(self.next_addr + (offset as i32 - 2)),
         };
 
         Ok(Branch::new(cond, target))
@@ -370,21 +426,30 @@ impl<'a> InstructionDecoder<'a> {
     }
 
     fn next_u8(&mut self) -> Result<u8, RuntimeError> {
-        let b = self.mem.bytes().get_u8(self.next_addr)
+        let b = self
+            .mem
+            .bytes()
+            .get_u8(self.next_addr)
             .or(Err(RuntimeError::ProgramCounterOutOfRange(self.loc())))?;
         self.next_addr += 1;
         Ok(b)
     }
 
     fn next_u16(&mut self) -> Result<u16, RuntimeError> {
-        let w = self.mem.bytes().get_u16(self.next_addr)
+        let w = self
+            .mem
+            .bytes()
+            .get_u16(self.next_addr)
             .or(Err(RuntimeError::ProgramCounterOutOfRange(self.loc())))?;
         self.next_addr += 2;
         Ok(w)
     }
 
     fn next_string(&mut self) -> Result<String, RuntimeError> {
-        let zstring = self.mem.bytes().get_zstring(self.next_addr)
+        let zstring = self
+            .mem
+            .bytes()
+            .get_zstring(self.next_addr)
             .or(Err(RuntimeError::ProgramCounterOutOfRange(self.loc())))?;
         self.next_addr += zstring.len();
         zstring.decode(self.mem.version(), Some(self.mem.abbrs_table()))
@@ -393,7 +458,12 @@ impl<'a> InstructionDecoder<'a> {
     fn loc(&self) -> ErrorLocation {
         ErrorLocation {
             start_addr: self.start_addr,
-            bytes: self.mem.bytes().get_slice(self.start_addr..self.next_addr).unwrap().to_vec(),
+            bytes: self
+                .mem
+                .bytes()
+                .get_slice(self.start_addr..self.next_addr)
+                .unwrap()
+                .to_vec(),
         }
     }
 
@@ -425,7 +495,7 @@ impl OperandType {
             0b10 => OperandType::Variable,
             //   $$11    Omitted altogether             0 bytes
             0b11 => OperandType::Omitted,
-            _ => panic!("2-bit value should not be equal to {:}", bits)
+            _ => panic!("2-bit value should not be equal to {:}", bits),
         }
     }
 
@@ -440,7 +510,7 @@ impl OperandType {
             0b1 => OperandType::Variable,
             // (If a 2OP instruction needs a large constant as operand, then it should be assembled
             // in variable rather than long form.)
-            _ => panic!("1-bit value should not be equal to {:}", bit)
+            _ => panic!("1-bit value should not be equal to {:}", bit),
         }
     }
 }

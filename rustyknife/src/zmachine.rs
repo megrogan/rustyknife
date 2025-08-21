@@ -16,11 +16,16 @@ use std::fmt::{Debug, Display, Formatter};
 const STACK_SIZE_LIMIT: usize = 0x10000;
 const CALL_STACK_SIZE_LIMIT: usize = 0x10000;
 
+// Type aliases to reduce type complexity in Continuation callbacks
+type KontResult<'a> = Result<Continuation<'a>, RuntimeError>;
+type EmptyCb<'a> = dyn FnOnce() -> KontResult<'a> + 'a;
+type ReadLineCb<'a> = dyn FnOnce(&str) -> KontResult<'a> + 'a;
+
 pub enum Continuation<'a> {
-    Step(Box<'a + FnOnce() -> Result<Continuation<'a>, RuntimeError>>),
-    UpdateStatusLine(StatusLine, Box<'a + FnOnce() -> Result<Continuation<'a>, RuntimeError>>),
-    Print(String, Box<'a + FnOnce() -> Result<Continuation<'a>, RuntimeError>>),
-    ReadLine(Box<'a + FnOnce(&str) -> Result<Continuation<'a>, RuntimeError>>),
+    Step(Box<EmptyCb<'a>>),
+    UpdateStatusLine(StatusLine, Box<EmptyCb<'a>>),
+    Print(String, Box<EmptyCb<'a>>),
+    ReadLine(Box<ReadLineCb<'a>>),
     Quit,
     // TODO consider adding a RuntimeError variant here, and implement some of the traits that
     // Result implements to allow for nice ? syntax
@@ -30,7 +35,9 @@ impl<'a> Debug for Continuation<'a> {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
             Continuation::Step(_) => write!(f, "Continuation::Step(_)"),
-            Continuation::UpdateStatusLine(status_line, _) => write!(f, "Continuation::UpdateStatusLine({:?}, _)", status_line),
+            Continuation::UpdateStatusLine(status_line, _) => {
+                write!(f, "Continuation::UpdateStatusLine({:?}, _)", status_line)
+            }
             Continuation::Print(text, _) => write!(f, "Continuation::Print({:?}, _)", text),
             Continuation::ReadLine(_) => write!(f, "Continuation::ReadLine(_)"),
             Continuation::Quit => write!(f, "Continuation::Quit"),
@@ -57,12 +64,12 @@ impl ZMachine {
         let mem = Memory::wrap(bytes.clone())?;
         let mut z = ZMachine {
             orig_bytes: bytes,
-            mem: mem,
+            mem,
             pc: Address::from_byte_address(0),
             call_stack: Vec::with_capacity(32),
             random: Random::new(),
             metadata: InterpreterMetadata {
-                interpreter_number: 6, // IBM PC
+                interpreter_number: 6,     // IBM PC
                 interpreter_version: b'A', // traditionally uses upper-case letters
                 standard_version_major: 1,
                 standard_version_minor: 1,
@@ -85,7 +92,7 @@ impl ZMachine {
         self.metadata = int_meta;
     }
 
-    pub fn start<'a>(&'a mut self) -> Result<Continuation<'a>, RuntimeError> {
+    pub fn start(&mut self) -> Result<Continuation<'_>, RuntimeError> {
         Ok(Continuation::Step(self.next()))
     }
 
@@ -329,7 +336,7 @@ impl ZMachine {
                 let next_prop = if let Some(obj_ref) = self.mem.obj_table().get_obj_ref(object)? {
                     let mut iter = obj_ref.iter_props()?;
                     if !property.is_null() {
-                        while let Some(res) = iter.next() {
+                        for res in iter.by_ref() {
                             if res?.prop() == property {
                                 break;
                             }
@@ -480,7 +487,7 @@ impl ZMachine {
                 // Print (Z-encoded) string at given byte address, in dynamic or static memory.
                 let addr = Address::from_byte_address(self.eval(operand)?);
                 let zstring = self.mem.bytes().get_zstring(addr)?;
-                let string = zstring.decode(self.version(), Some(&self.mem.abbrs_table()))?;
+                let string = zstring.decode(self.version(), Some(self.mem.abbrs_table()))?;
                 return self.print(string);
             }
             Instruction::RemoveObj(operand) => {
@@ -536,7 +543,7 @@ impl ZMachine {
                 // Print the (Z-encoded) string at the given packed address in high memory.
                 let addr = Address::from_packed_address(self.eval(operand)?, self.version());
                 let zstring = self.mem.bytes().get_zstring(addr)?;
-                let string = zstring.decode(self.version(), Some(&self.mem.abbrs_table()))?;
+                let string = zstring.decode(self.version(), Some(self.mem.abbrs_table()))?;
                 return self.print(string);
             }
             Instruction::Load(operand, store) => {
@@ -632,7 +639,9 @@ impl ZMachine {
                 // exclude the padding from checksum calculations.
                 let expected_checksum = self.mem.header().stored_checksum();
                 let cond = match expected_checksum {
-                    Some(expected_checksum) => expected_checksum == self.mem.header().actual_checksum(),
+                    Some(expected_checksum) => {
+                        expected_checksum == self.mem.header().actual_checksum()
+                    }
                     None => true,
                 };
                 self.cond_branch(cond, branch)?;
@@ -644,7 +653,8 @@ impl ZMachine {
                 // versions: it calls the routine with 0, 1, 2 or 3 arguments as supplied and
                 // stores the resulting return value. (When the address 0 is called as a routine,
                 // nothing happens and the return value is false.)
-                let routine = Address::from_packed_address(self.eval(var_operands.get(0)?)?, self.version());
+                let routine =
+                    Address::from_packed_address(self.eval(var_operands.get(0)?)?, self.version());
                 let mut args = Vec::with_capacity(var_operands.len() - 1);
                 for i in 1..var_operands.len() {
                     args.push(self.eval(var_operands.get(i)?)?);
@@ -744,16 +754,20 @@ impl ZMachine {
                 // (Some version 3 games, such as 'Enchanter' release 29, had a debugging verb
                 // #random such that typing, say, #random 14 caused a call of random with -14.)
                 let range = self.eval(var_operands.get(0)?)? as i16;
-                let val = if range < 0 {
-                    self.random.seed(range as u16);
-                    0
-                } else if range == 0 {
-                    self.random.seed_unpredictably();
-                    0
-                } else {
-                    // Assuming that range is inclusive because we start from 1. The spec doesn't
-                    // say. Note that we can safely add 1 because we know that range <= 0x7fff.
-                    self.random.get(1..range as u16 + 1)
+                let val = match range {
+                    r if r < 0 => {
+                        self.random.seed(r as u16);
+                        0
+                    }
+                    0 => {
+                        self.random.seed_unpredictably();
+                        0
+                    }
+                    r => {
+                        // Assuming that range is inclusive because we start from 1. The spec doesn't
+                        // say. Note that we can safely add 1 because we know that range <= 0x7fff.
+                        self.random.get(1..r as u16 + 1)
+                    }
                 };
                 self.store(store, val)?;
             }
@@ -780,20 +794,32 @@ impl ZMachine {
             // Instruction::SetWindow(var_operands) =>
             // Instruction::OutputStream(var_operands) =>
             // Instruction::InputStream(var_operands) =>
-            _ => panic!("TODO implement instruction {:?}", instr)
+            _ => panic!("TODO implement instruction {:?}", instr),
         };
         Ok(Continuation::Step(self.next()))
     }
 
     fn reset(&mut self) {
-        self.mem.header_mut().set_flag(header::STATUS_LINE_NOT_AVAILABLE, false);
-        self.mem.header_mut().set_flag(header::SCREEN_SPLITTING_AVAILABLE, true);
-        self.mem.header_mut().set_flag(header::VARIABLE_PITCH_FONT_DEFAULT, true);
-        self.mem.header_mut().set_flag(header::TRANSCRIPTING_ON, false);
+        self.mem
+            .header_mut()
+            .set_flag(header::STATUS_LINE_NOT_AVAILABLE, false);
+        self.mem
+            .header_mut()
+            .set_flag(header::SCREEN_SPLITTING_AVAILABLE, true);
+        self.mem
+            .header_mut()
+            .set_flag(header::VARIABLE_PITCH_FONT_DEFAULT, true);
+        self.mem
+            .header_mut()
+            .set_flag(header::TRANSCRIPTING_ON, false);
         if self.mem.version() >= V3 {
-            self.mem.header_mut().set_flag(header::FORCE_FIXED_PITCH_FONT, false);
+            self.mem
+                .header_mut()
+                .set_flag(header::FORCE_FIXED_PITCH_FONT, false);
         }
-        self.mem.header_mut().set_interpreter_metadata(&self.metadata);
+        self.mem
+            .header_mut()
+            .set_interpreter_metadata(&self.metadata);
     }
 
     fn call(&mut self, routine: Address, args: &[u16], store: Store) -> Result<(), RuntimeError> {
@@ -802,11 +828,12 @@ impl ZMachine {
         // executed; in Versions 4 and later, when timed keyboard input is being monitored; in
         // Versions 5 and later, when a sound effect finishes; in Version 6, when the game begins
         // (to call the "main" routine); in Version 6, when a "newline interrupt" occurs.
-        
+
         // 6.4.4
         // When a routine is called, its local variables are created with initial values taken from
         // the routine header (Versions 1 to 4) or with initial value 0 (Versions 5 and later). ...
-        let (mut frame, next_pc) = StackFrame::from_routine_header(&self.mem, routine, store, self.pc)?;
+        let (mut frame, next_pc) =
+            StackFrame::from_routine_header(&self.mem, routine, store, self.pc)?;
 
         // ... Next, the arguments are written into the local variables (argument 1 into local 1
         // and so on).
@@ -814,8 +841,8 @@ impl ZMachine {
         // 6.4.4.1
         // It is legal for there to be more arguments than local variables (any spare arguments are
         // thrown away) or for there to be fewer.
-        for i in 0..(std::cmp::min(args.len(), frame.num_locals())) {
-            frame.set_local(Local::from_index(i), args[i])?;
+        for (i, &arg) in args.iter().enumerate().take(frame.num_locals()) {
+            frame.set_local(Local::from_index(i), arg)?;
         }
 
         if self.call_stack.len() >= CALL_STACK_SIZE_LIMIT {
@@ -911,23 +938,30 @@ impl ZMachine {
         self.mem.bytes_mut().set_u16(addr, val)
     }
 
-    fn next<'a>(&'a mut self) -> Box<'a + FnOnce() -> Result<Continuation<'a>, RuntimeError>> {
-        Box::new(move || { self.step() })
+    fn next(&mut self) -> Box<EmptyCb<'_>> {
+        Box::new(move || self.step())
     }
 
-    fn print<'a>(&'a mut self, string: String) -> Result<Continuation<'a>, RuntimeError> {
+    fn print(&mut self, string: String) -> Result<Continuation<'_>, RuntimeError> {
         Ok(Continuation::Print(string, self.next()))
     }
 
-    fn update_status_line<'a>(&'a mut self) -> Result<Continuation<'a>, RuntimeError> {
+    fn update_status_line(&mut self) -> Result<Continuation<'_>, RuntimeError> {
         // 8.2.2.1
         // Whenever the status line is being printed the first global must contain a valid object
         // number. (It would be useful if interpreters could protect themselves in case the game
         // accidentally violates this requirement.)
-        let location = self.mem.globals().get(Global::from_index(0))
-            .and_then(|obj_num| self.mem.obj_table().get_obj_ref(Object::from_number(obj_num)))
+        let location = self
+            .mem
+            .globals()
+            .get(Global::from_index(0))
+            .and_then(|obj_num| {
+                self.mem
+                    .obj_table()
+                    .get_obj_ref(Object::from_number(obj_num))
+            })
             .and_then(|obj_ref| obj_ref.map_or(Ok(String::new()), |obj_ref| obj_ref.name()))
-            .unwrap_or(String::new());
+            .unwrap_or_default();
 
         // 8.2.1
         // In Versions 1 and 2, all games are "score games". In Version 3, if bit 1 of 'Flags 1' is
@@ -954,14 +988,11 @@ impl ZMachine {
             }
         };
 
-        let status_line = StatusLine {
-            location: location,
-            progress: progress,
-        };
+        let status_line = StatusLine { location, progress };
         Ok(Continuation::UpdateStatusLine(status_line, self.next()))
     }
 
-    fn read<'a>(&'a mut self, text: Address, parse: Address) -> Result<Continuation<'a>, RuntimeError> {
+    fn read(&mut self, text: Address, parse: Address) -> Result<Continuation<'_>, RuntimeError> {
         // TODO reinstate
         // match self.version() {
         //     // In Versions 1 to 3, the status line is automatically redisplayed first.
@@ -974,10 +1005,7 @@ impl ZMachine {
             // In Versions 1 to 4, byte 0 of the text-buffer should initially contain the maximum
             // number of letters which can be typed, minus 1 (the interpreter should not accept
             // more than this).
-            V1 | V2 | V3 => {
-                self.mem.bytes().get_u8(text)? as u16 + 1
-            }
-            // In Versions 5 and later, ...
+            V1 | V2 | V3 => self.mem.bytes().get_u8(text)? as u16 + 1, // In Versions 5 and later, ...
         };
 
         // Initially, byte 0 of the parse-buffer should hold the maximum number of textual words
@@ -1002,7 +1030,14 @@ impl ZMachine {
         })))
     }
 
-    fn parse_read_line<'a>(&'a mut self, text: Address, parse: Address, max_text_len: u16, max_words: u8, raw_input: &str) -> Result<Continuation<'a>, RuntimeError> {
+    fn parse_read_line<'a>(
+        &'a mut self,
+        text: Address,
+        parse: Address,
+        max_text_len: u16,
+        max_words: u8,
+        raw_input: &str,
+    ) -> Result<Continuation<'a>, RuntimeError> {
         // A sequence of characters is read in from the current input stream until a carriage
         // return (or, in Versions 5 and later, any terminating character) is found.
         let input = raw_input.to_lowercase();
@@ -1043,9 +1078,14 @@ impl ZMachine {
             num_words += 1;
             if num_words <= max_words {
                 // println!("{:?}", word);
-                self.mem.bytes_mut().set_u16(parse_addr, word.addr().map(|a| a.to_byte_address()).unwrap_or(0))?;
+                self.mem.bytes_mut().set_u16(
+                    parse_addr,
+                    word.addr().map(|a| a.to_byte_address()).unwrap_or(0),
+                )?;
                 self.mem.bytes_mut().set_u8(parse_addr + 2, word.len())?;
-                self.mem.bytes_mut().set_u8(parse_addr + 3, word.start_idx())?;
+                self.mem
+                    .bytes_mut()
+                    .set_u8(parse_addr + 3, word.start_idx())?;
                 parse_addr += 4;
             }
         }
@@ -1085,12 +1125,17 @@ impl StackFrame {
         StackFrame {
             stack: vec![],
             locals: vec![],
-            store: Variable::PushPullStack, // Unused.
+            store: Variable::PushPullStack,             // Unused.
             return_addr: Address::from_byte_address(0), // Unused.
         }
     }
 
-    fn from_routine_header(mem: &Memory, routine: Address, store: Store, return_addr: Address) -> Result<(StackFrame, Address), RuntimeError> {
+    fn from_routine_header(
+        mem: &Memory,
+        routine: Address,
+        store: Store,
+        return_addr: Address,
+    ) -> Result<(StackFrame, Address), RuntimeError> {
         // 5.1
         // A routine is required to begin at an address in memory which can be represented by a
         // packed address (for instance, in Version 5 it must occur at a byte address which is
@@ -1105,9 +1150,10 @@ impl StackFrame {
         // 5.2
         // A routine begins with one byte indicating the number of local variables it has (between
         // 0 and 15 inclusive).
-        let num_locals = mem.bytes().get_u8(addr)
-            .or(Err(RuntimeError::InvalidRoutineHeader(addr)))?
-            as usize;
+        let num_locals = mem
+            .bytes()
+            .get_u8(addr)
+            .or(Err(RuntimeError::InvalidRoutineHeader(addr)))? as usize;
         if num_locals > 15 {
             return Err(RuntimeError::InvalidRoutineHeader(addr));
         }
@@ -1119,25 +1165,26 @@ impl StackFrame {
             // In Versions 1 to 4, that number of 2-byte words follows, giving initial values for
             // these local variables.
             V1 | V2 | V3 => {
-                for i in 0..num_locals as usize {
-                    locals[i] = mem.bytes().get_u16(addr)
+                for local in locals.iter_mut() {
+                    *local = mem
+                        .bytes()
+                        .get_u16(addr)
                         .or(Err(RuntimeError::InvalidRoutineHeader(addr)))?;
                     addr += 2;
                 }
-            }
-            // In Versions 5 and later, the initial values are all zero.
+            } // In Versions 5 and later, the initial values are all zero.
         }
-        
+
         // 5.3
         // Execution of instructions begins from the byte after this header information. There is
         // no formal 'end-marker' for a routine (it is simply assumed that execution eventually
         // results in a return taking place).
 
         let frame = StackFrame {
-            stack: stack,
-            locals: locals,
-            store: store,
-            return_addr: return_addr,
+            stack,
+            locals,
+            store,
+            return_addr,
         };
         Ok((frame, addr))
     }
@@ -1155,7 +1202,10 @@ impl StackFrame {
     }
 
     fn top(&self) -> Result<u16, RuntimeError> {
-        self.stack.last().map(|v| *v).ok_or(RuntimeError::StackUnderflow)
+        self.stack
+            .last()
+            .copied()
+            .ok_or(RuntimeError::StackUnderflow)
     }
 
     fn set_top(&mut self, val: u16) -> Result<(), RuntimeError> {
@@ -1168,11 +1218,17 @@ impl StackFrame {
     }
 
     fn local(&self, local: Local) -> Result<u16, RuntimeError> {
-        Ok(*self.locals.get(local.index()).ok_or(RuntimeError::InvalidLocal(local))?)
+        Ok(*self
+            .locals
+            .get(local.index())
+            .ok_or(RuntimeError::InvalidLocal(local))?)
     }
 
     fn set_local(&mut self, local: Local, value: u16) -> Result<(), RuntimeError> {
-        *self.locals.get_mut(local.index()).ok_or(RuntimeError::InvalidLocal(local))? = value;
+        *self
+            .locals
+            .get_mut(local.index())
+            .ok_or(RuntimeError::InvalidLocal(local))? = value;
         Ok(())
     }
 }

@@ -22,12 +22,17 @@ impl ZString {
         self.0.len() * 3 / 2
     }
 
-    pub fn decode(&self, version: Version, abbrs_table: Option<&AbbreviationsTable>) -> Result<String, RuntimeError> {
+    pub fn decode(
+        &self,
+        version: Version,
+        abbrs_table: Option<&AbbreviationsTable>,
+    ) -> Result<String, RuntimeError> {
         ZStringDecoder::new(version, abbrs_table).decode(self)
     }
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct AbbreviationsTable {
     version: Version,
     bytes: Rc<RefCell<Bytes>>,
@@ -35,12 +40,19 @@ pub struct AbbreviationsTable {
 }
 
 impl AbbreviationsTable {
-    pub fn new(version: Version, bytes: Rc<RefCell<Bytes>>, base_addr: Address) -> Result<AbbreviationsTable, FormatError> {
-        bytes.borrow().get_u16(base_addr).or(Err(FormatError::AbbreviationsTableOutOfRange(base_addr)))?;
+    pub fn new(
+        version: Version,
+        bytes: Rc<RefCell<Bytes>>,
+        base_addr: Address,
+    ) -> Result<AbbreviationsTable, FormatError> {
+        bytes
+            .borrow()
+            .get_u16(base_addr)
+            .or(Err(FormatError::AbbreviationsTableOutOfRange(base_addr)))?;
         Ok(AbbreviationsTable {
-            version: version,
-            bytes: bytes,
-            base_addr: base_addr,
+            version,
+            bytes,
+            base_addr,
         })
     }
 
@@ -49,7 +61,8 @@ impl AbbreviationsTable {
         // If z is the first Z-character (1, 2 or 3) and x the subsequent one, then the interpreter
         // must look up entry 32(z-1)+x in the abbreviations table and print the string at that
         // word address.
-        let addr = Address::from_word_address(self.bytes.borrow().get_u16(self.base_addr + 2 * idx)?);
+        let addr =
+            Address::from_word_address(self.bytes.borrow().get_u16(self.base_addr + 2 * idx)?);
         self.bytes.borrow().get_zstring(addr)
     }
 }
@@ -65,8 +78,8 @@ struct ZStringDecoder<'a> {
 impl<'a> ZStringDecoder<'a> {
     fn new(version: Version, abbrs_table: Option<&'a AbbreviationsTable>) -> ZStringDecoder<'a> {
         ZStringDecoder {
-            version: version,
-            abbrs_table: abbrs_table,
+            version,
+            abbrs_table,
         }
     }
 
@@ -85,7 +98,7 @@ impl<'a> ZStringDecoder<'a> {
                 // In Versions 1 and 2, ... The Z-characters 2 and 3 are called 'shift'
                 // characters and change the alphabet for the next character only. The new
                 // alphabet depends on what the current one is:
-                // 
+                //
                 //              from A0  from A1  from A2
                 //   Z-char 2      A1       A2       A0
                 //   Z-char 3      A2       A0       A1
@@ -116,9 +129,12 @@ impl<'a> ZStringDecoder<'a> {
                 // abbreviations table and print the string at that word address. In Version 2,
                 // Z-character 1 has this effect (but 2 and 3 do not, so there are only 32
                 // abbreviations).
-                (V3, 1, _) | (V3, 2, _) | (V3, 3, _) | (V2, 1, _)=> {
+                (V3, 1, _) | (V3, 2, _) | (V3, 3, _) | (V2, 1, _) => {
                     if let Some(next_char) = iter.next() {
-                        out.push_str(&self.abbreviation(32 * (zchar.0 as usize - 1) + next_char.0 as usize)?);
+                        out.push_str(
+                            &self
+                                .abbreviation(32 * (zchar.0 as usize - 1) + next_char.0 as usize)?,
+                        );
                     }
                 }
 
@@ -226,7 +242,7 @@ const DEFAULT_UNICODE_TABLE: &[char] = &[
     'ä', 'ö', 'ü', 'Ä', 'Ö', 'Ü', 'ß', '»', '«', 'ë', 'ï', 'ÿ', 'Ë', 'Ï', 'á', 'é', 'í', 'ó', 'ú',
     'ý', 'Á', 'É', 'Í', 'Ó', 'Ú', 'Ý', 'à', 'è', 'ì', 'ò', 'ù', 'À', 'È', 'Ì', 'Ò', 'Ù', 'â', 'ê',
     'î', 'ô', 'û', 'Â', 'Ê', 'Î', 'Ô', 'Û', 'å', 'Å', 'ø', 'Ø', 'ã', 'ñ', 'õ', 'Ã', 'Ñ', 'Õ', 'æ',
-    'Æ', 'ç', 'Ç', 'þ', 'ð', 'Þ', 'Ð', '£', 'œ', 'Œ', '¡', '¿'
+    'Æ', 'ç', 'Ç', 'þ', 'ð', 'Þ', 'Ð', '£', 'œ', 'Œ', '¡', '¿',
 ];
 
 struct ZCharIterator<'a> {
@@ -237,7 +253,11 @@ struct ZCharIterator<'a> {
 
 impl<'a> ZCharIterator<'a> {
     fn new(zs: &'a ZString) -> ZCharIterator<'a> {
-        ZCharIterator { data: zs.0.iter(), chars: [0; 3], next_char: 0 }
+        ZCharIterator {
+            data: zs.0.iter(),
+            chars: [0; 3],
+            next_char: 0,
+        }
     }
 }
 
@@ -247,11 +267,11 @@ impl<'a> Iterator for ZCharIterator<'a> {
         // 3.2
         // Text in memory consists of a sequence of 2-byte words. Each word is divided into three
         // 5-bit 'Z-characters', plus 1 bit left over, arranged as
-        // 
+        //
         //    --first byte-------   --second byte---
         //    7    6 5 4 3 2  1 0   7 6 5  4 3 2 1 0
         //    bit  --first--  --second---  --third--
-        // 
+        //
         // The bit is set only on the last 2-byte word of the text, and so marks the end.
         if self.next_char == 0 {
             let fst = self.data.next()?;
@@ -294,7 +314,7 @@ impl Alphabet {
         // 3.5.3
         // In Versions 2 to 4, the alphabet table for converting Z-characters into ZSCII character codes is
         // as follows:
-        // 
+        //
         //    Z-char 6789abcdef0123456789abcdef
         // current   --------------------------
         //   A0      abcdefghijklmnopqrstuvwxyz
@@ -306,29 +326,29 @@ impl Alphabet {
         // see S 3.4 above. Character 7 in A2, written here as a circumflex ^, is a new-line.) For example,
         // in alphabet A1 the Z-character 12 is translated as a capital G (ZSCII character code 71).
         const A0: &[char; 32] = &[
-            ' ', ' ', ' ', ' ', ' ', ' ', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j',
-            'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
+            ' ', ' ', ' ', ' ', ' ', ' ', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k',
+            'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z',
         ];
         const A1: &[char; 32] = &[
-            ' ', ' ', ' ', ' ', ' ', ' ', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J',
-            'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'
+            ' ', ' ', ' ', ' ', ' ', ' ', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K',
+            'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z',
         ];
         const A2: &[char; 32] = &[
-            ' ', ' ', ' ', ' ', ' ', ' ', ' ', '\n', '0', '1', '2', '3', '4', '5', '6', '7',
-            '8', '9', '.', ',', '!', '?', '_', '#', '\'', '"', '/', '\\', '-', ':', '(', ')'
+            ' ', ' ', ' ', ' ', ' ', ' ', ' ', '\n', '0', '1', '2', '3', '4', '5', '6', '7', '8',
+            '9', '.', ',', '!', '?', '_', '#', '\'', '"', '/', '\\', '-', ':', '(', ')',
         ];
 
         // 3.5.4
         // Version 1 has a slightly different A2 row in its alphabet table (new-line is not needed, making
         // room for the < character):
-        // 
+        //
         //           6789abcdef0123456789abcdef
         //           --------------------------
         //   A2       0123456789.,!?_#'"/\<-:()
         //           --------------------------
         const A2_V1: &[char; 32] = &[
-            ' ', ' ', ' ', ' ', ' ', ' ', ' ', '0', '1', '2', '3', '4', '5', '6', '7', '8',
-            '9', '.', ',', '!', '?', '_', '#', '\'', '"', '/', '\\', '<', '-', ':', '(', ')'
+            ' ', ' ', ' ', ' ', ' ', ' ', ' ', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
+            '.', ',', '!', '?', '_', '#', '\'', '"', '/', '\\', '<', '-', ':', '(', ')',
         ];
 
         match (version, self) {

@@ -20,15 +20,21 @@ impl Bytes {
 
     pub fn copy_from(&mut self, other: &Bytes) {
         assert!(self.len() == other.len());
-        self.0.copy_from_slice(&other.as_slice());
+        self.0.copy_from_slice(other.as_slice());
     }
 
     pub fn get_u8(&self, addr: Address) -> Result<u8, RuntimeError> {
-        Ok(*self.0.get(addr.to_index()).ok_or(RuntimeError::AddressOutOfRange(addr))?)
+        Ok(*self
+            .0
+            .get(addr.to_index())
+            .ok_or(RuntimeError::AddressOutOfRange(addr))?)
     }
 
     pub fn set_u8(&mut self, addr: Address, val: u8) -> Result<(), RuntimeError> {
-        *self.0.get_mut(addr.to_index()).ok_or(RuntimeError::AddressOutOfRange(addr))? = val;
+        *self
+            .0
+            .get_mut(addr.to_index())
+            .ok_or(RuntimeError::AddressOutOfRange(addr))? = val;
         Ok(())
     }
 
@@ -125,17 +131,17 @@ impl Address {
         // 1.2.3
         // ***[1.0] A packed address specifies where a routine or string begins in high memory.
         // Given a packed address P, the formula to obtain the corresponding byte address B is:
-        // 
+        //
         //   2P           Versions 1, 2 and 3
         //   4P           Versions 4 and 5
         //   4P + 8R_O    Versions 6 and 7, for routine calls
         //   4P + 8S_O    Versions 6 and 7, for print_paddr
         //   8P           Version 8
-        // 
+        //
         // R_O and S_O are the routine and strings offsets (specified in the header as words at $28
         // and $2a, respectively).
         match version {
-            V1 | V2 | V3 => Address(packed_addr as usize * 2)
+            V1 | V2 | V3 => Address(packed_addr as usize * 2),
         }
     }
 
