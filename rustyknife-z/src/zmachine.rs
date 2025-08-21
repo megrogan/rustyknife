@@ -56,16 +56,12 @@ pub struct ZMachine {
 }
 
 impl ZMachine {
-    pub fn new(story_file: Vec<u8>) -> Result<ZMachine, FormatError> {
-        Self::init(story_file, &mut None)
-    }
+    // pub fn new(story_file: Vec<u8>) -> Result<ZMachine, FormatError> {
+    //     Self::init(story_file, &mut None)
+    // }
 
     // In some environments it is not possible to seed a RNG implicitly
-    pub fn new_with_rng(story_file: Vec<u8>, rng: StdRng) -> Result<ZMachine, FormatError> {
-        Self::init(story_file, &mut Some(rng))
-    }
-
-    fn init(story_file: Vec<u8>, rng: &mut Option<StdRng>) -> Result<ZMachine, FormatError> {
+    pub fn new_with_rng(story_file: Vec<u8>, rng: &mut StdRng) -> Result<ZMachine, FormatError> {
         // 5.5
         // In all other Versions, the word at $06 contains the byte address of the first
         // instruction to execute. The Z-machine starts in an environment with no local variables
@@ -73,18 +69,12 @@ impl ZMachine {
         let bytes = Bytes::from(story_file);
         let mem = Memory::wrap(bytes.clone())?;
 
-        let random = if let Some(rng) = rng {
-            Random::from_rng(rng)
-        } else {
-            Random::new()
-        };
-
         let mut z = ZMachine {
             orig_bytes: bytes,
             mem,
             pc: Address::from_byte_address(0),
             call_stack: Vec::with_capacity(32),
-            random,
+            random: Random::from_rng(rng),
             metadata: InterpreterMetadata {
                 interpreter_number: 6,     // IBM PC
                 interpreter_version: b'A', // traditionally uses upper-case letters
@@ -776,7 +766,7 @@ impl ZMachine {
                         0
                     }
                     0 => {
-                        self.random.seed_unpredictably();
+                        //self.random.seed_unpredictably();
                         0
                     }
                     r => {

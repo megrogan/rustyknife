@@ -10,23 +10,23 @@ type RngImpl = rand_pcg::Lcg64Xsh32;
 
 pub struct Random {
     rng: RngImpl,
-    implicit: bool,
+    //implicit: bool,
 }
 
 impl Random {
-    pub fn new() -> Self {
-        Random {
-            rng: RngImpl::from_os_rng(),
-            implicit: true,
-        }
-    }
+    // pub fn new() -> Self {
+    //     Random {
+    //         rng: RngImpl::from_os_rng(),
+    //         implicit: true,
+    //     }
+    // }
 
     pub fn from_rng(rng: &mut StdRng) -> Self {
         let seed = rng.gen::<[u8; 16]>();
         let rng = RngImpl::from_seed(seed);
         Random {
             rng,
-            implicit: false,
+            //implicit: false,
         }
     }
 
@@ -51,9 +51,9 @@ impl Random {
         self.rng = RngImpl::seed_from_u64(seed as u64);
     }
 
-    pub fn seed_unpredictably(&mut self) {
-        if self.implicit {
-            self.rng = RngImpl::from_os_rng();
-        }
-    }
+    // pub fn seed_unpredictably(&mut self) {
+    //     if self.implicit {
+    //         self.rng = RngImpl::from_os_rng();
+    //     }
+    // }
 }

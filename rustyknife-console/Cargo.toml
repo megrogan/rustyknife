@@ -7,3 +7,4 @@ edition = "2018"
 [dependencies]
 rustyknife-z = { path = "../rustyknife-z" }
 structopt = "0.2.14"
+rand = "0.8.5"
