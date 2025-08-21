@@ -1,7 +1,5 @@
-//#![feature(unsized_locals)]
-
 use difference::Changeset;
-use rustyknife::*;
+use rustyknife_z::*;
 use std::fs;
 
 fn make_zmachine(filename: &str) -> ZMachine {

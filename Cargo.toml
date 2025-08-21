@@ -1,6 +1,6 @@
 [workspace]
 
 members = [
-  "rustyknife",
+  "rustyknife-z",
   "rustyknife-console",
 ]

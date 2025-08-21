@@ -228,21 +228,21 @@ dependencies = [
 ]
 
 [[package]]
-name = "rustyknife"
+name = "rustyknife-console"
+version = "0.1.0"
+dependencies = [
+ "rustyknife-z",
+ "structopt",
+]
+
+[[package]]
+name = "rustyknife-z"
 version = "0.1.0"
 dependencies = [
  "difference",
  "quick-error",
  "rand",
  "rand_pcg",
-]
-
-[[package]]
-name = "rustyknife-console"
-version = "0.1.0"
-dependencies = [
- "rustyknife",
- "structopt",
 ]
 
 [[package]]

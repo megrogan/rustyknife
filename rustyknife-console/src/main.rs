@@ -1,6 +1,4 @@
-//#![feature(unsized_locals)]
-
-use rustyknife::*;
+use rustyknife_z::*;
 use std::fs;
 use std::io::{BufRead, Write};
 use std::path::PathBuf;
@@ -42,8 +40,8 @@ fn run() -> i32 {
     let stdin = std::io::stdin();
     let mut input = stdin.lock();
 
-    let mut z =
-        ZMachine::new(story_file).unwrap_or_else(|_| panic!("error in story file {:?}", &opts.story_file));
+    let mut z = ZMachine::new(story_file)
+        .unwrap_or_else(|_| panic!("error in story file {:?}", &opts.story_file));
 
     let mut continuation = z.start();
     loop {
