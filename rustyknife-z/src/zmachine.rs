@@ -10,6 +10,7 @@ use crate::platform::*;
 use crate::random::Random;
 use crate::version::*;
 use crate::zstring;
+use rand::rngs::StdRng;
 use std::fmt;
 use std::fmt::{Debug, Display, Formatter};
 
@@ -56,18 +57,34 @@ pub struct ZMachine {
 
 impl ZMachine {
     pub fn new(story_file: Vec<u8>) -> Result<ZMachine, FormatError> {
+        Self::init(story_file, &mut None)
+    }
+
+    // In some environments it is not possible to seed a RNG implicitly
+    pub fn new_with_rng(story_file: Vec<u8>, rng: StdRng) -> Result<ZMachine, FormatError> {
+        Self::init(story_file, &mut Some(rng))
+    }
+
+    fn init(story_file: Vec<u8>, rng: &mut Option<StdRng>) -> Result<ZMachine, FormatError> {
         // 5.5
         // In all other Versions, the word at $06 contains the byte address of the first
         // instruction to execute. The Z-machine starts in an environment with no local variables
         // from which, again, a return is illegal.
         let bytes = Bytes::from(story_file);
         let mem = Memory::wrap(bytes.clone())?;
+
+        let random = if let Some(rng) = rng {
+            Random::from_rng(rng).map_err(FormatError::Io)?
+        } else {
+            Random::new()
+        };
+
         let mut z = ZMachine {
             orig_bytes: bytes,
             mem,
             pc: Address::from_byte_address(0),
             call_stack: Vec::with_capacity(32),
-            random: Random::new(),
+            random,
             metadata: InterpreterMetadata {
                 interpreter_number: 6,     // IBM PC
                 interpreter_version: b'A', // traditionally uses upper-case letters
@@ -75,7 +92,6 @@ impl ZMachine {
                 standard_version_minor: 1,
             },
         };
-        z.random.seed_unpredictably();
         z.restart();
         Ok(z)
     }

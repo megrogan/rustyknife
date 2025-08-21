@@ -7,6 +7,10 @@ use quick_error::quick_error;
 quick_error! {
     #[derive(Debug)]
     pub enum FormatError {
+        Io(err: std::io::Error) {
+            from()
+            display("I/O error: {}", err)
+        }
         TooSmall(size: usize) {
             display("story file is too small ({} bytes)", size)
         }
