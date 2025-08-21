@@ -1,8 +1,10 @@
 [package]
 name = "rustyknife-z"
+description = "Rusty Knife is a Rust implementation of the Inform Z-machine virtual machine, which powers old Infocom games like Zork."
 version = "0.1.0"
 authors = ["Thomas ten Cate <ttencate@gmail.com>"]
 edition = "2018"
+license-file = "../LICENSE.md"
 
 [dependencies]
 quick-error = "1.2.2"
