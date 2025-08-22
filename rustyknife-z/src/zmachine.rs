@@ -606,9 +606,6 @@ impl ZMachine {
                 // never operated (in any of the Infocom datafiles): it may once have been a
                 // breakpoint.
             }
-            // Instruction::Save(branch) =>
-            // Instruction::Restore(branch) =>
-            // Instruction::Restart() =>
             Instruction::RetPopped() => {
                 // ret_popped
                 // 0OP:184 8 ret_popped
@@ -800,11 +797,15 @@ impl ZMachine {
                 let value = self.frame_mut().pull()?;
                 self.store(variable, value)?;
             }
-            // Instruction::SplitWindow(var_operands) =>
-            // Instruction::SetWindow(var_operands) =>
-            // Instruction::OutputStream(var_operands) =>
-            // Instruction::InputStream(var_operands) =>
-            _ => panic!("TODO implement instruction {:?}", instr),
+            Instruction::Save(_) => {}
+            Instruction::Restore(_) => {}
+            Instruction::Restart() => {}
+            Instruction::SplitWindow(_) => {}
+            Instruction::SetWindow(_) => {}
+            Instruction::OutputStream(_) => {}
+            Instruction::InputStream(_) => {
+                return self.print("Command not supported".to_string());
+            }
         };
         Ok(Continuation::Step(self.next()))
     }
