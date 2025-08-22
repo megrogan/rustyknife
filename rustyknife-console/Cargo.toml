@@ -5,6 +5,5 @@ authors = ["Thomas ten Cate <ttencate@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-rustyknife-z = { path = "../rustyknife-z" }
+rustyknife-z = { path = "../rustyknife-z", features = ["os_rng"] }
 structopt = "0.2.14"
-rand = "0.8.5"

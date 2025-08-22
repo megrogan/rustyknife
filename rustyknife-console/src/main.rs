@@ -1,5 +1,3 @@
-use rand::rngs::StdRng;
-use rand::SeedableRng;
 use rustyknife_z::*;
 use std::fs;
 use std::io::{BufRead, Write};
@@ -39,11 +37,10 @@ fn run() -> i32 {
     //     .expect(&format!("error in story file {:?}", &opts.story_file));
     // print!("{:}", mem.obj_table().to_tree_string().unwrap());
 
-    let mut rng = StdRng::from_seed([0; 32]);
     let stdin = std::io::stdin();
     let mut input = stdin.lock();
 
-    let mut z = ZMachine::new_with_rng(story_file, &mut rng)
+    let mut z = ZMachine::new(story_file)
         .unwrap_or_else(|_| panic!("error in story file {:?}", &opts.story_file));
 
     let mut continuation = z.start();

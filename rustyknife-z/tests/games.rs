@@ -1,12 +1,10 @@
 use difference::Changeset;
-use rand::{rngs::StdRng, SeedableRng};
 use rustyknife_z::*;
 use std::fs;
 
 fn make_zmachine(filename: &str) -> ZMachine {
     let data = fs::read(filename).unwrap();
-    let mut rng = StdRng::from_seed([0; 32]);
-    ZMachine::new_with_rng(data, &mut rng).unwrap()
+    ZMachine::new(data).unwrap()
 }
 
 fn run_zmachine(mut zmachine: ZMachine, inputs: &[&str]) -> String {
